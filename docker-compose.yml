@@ -1,0 +1,16 @@
+services:
+  db:
+    image: postgis/postgis:16-3.4-alpine
+    container_name: kumap_db
+    restart: always
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: qwerty # Поменяй на свой
+      POSTGRES_DB: kumap
+    ports:
+      - "5434:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql
+
+volumes:
+  postgres_data:

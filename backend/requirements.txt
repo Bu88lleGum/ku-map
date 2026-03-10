@@ -1,0 +1,17 @@
+# Web framework
+fastapi[standard]
+
+# Database & ORM
+sqlmodel
+psycopg[binary]
+geoalchemy2
+alembic
+
+# Math & Navigation Logic
+networkx
+shapely
+numpy
+
+# Utilities
+python-multipart
+pydantic-settings
