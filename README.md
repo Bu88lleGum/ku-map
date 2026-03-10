@@ -11,7 +11,7 @@
 ## 🚀 Быстрый старт (для разработчиков)
 1. Клонирование и подготовка
 ```bash
-git clone <ссылка_на_ваш_репозиторий>
+git clone https://github.com/Bu88lleGum/ku-map
 cd kumap
 ```
 2. Запуск базы данных (Docker)
