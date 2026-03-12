@@ -11,6 +11,7 @@ alembic
 networkx
 shapely
 numpy
+matplotlib
 
 # Utilities
 python-multipart

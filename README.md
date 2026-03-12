@@ -6,7 +6,7 @@
 
 - **Frontend:** Next.js (App Router), MapLibre GL JS (Карты), Tailwind CSS.
 
-- **DevOps:** Docker Compose (PostgreSQL 16 + PostG
+- **DevOps:** Docker Compose (PostgreSQL 16 + PostGIS)
 
 ## 🚀 Быстрый старт (для разработчиков)
 1. Клонирование и подготовка

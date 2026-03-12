@@ -1,0 +1,20 @@
+{
+  "nodes": [
+    {"id": "Room_1", "x": 0, "y": 0, "floor": 1},
+    {"id": "Room_2", "x": 10, "y": 0, "floor": 1},
+    {"id": "Hallway", "x": 5, "y": 5, "floor": 1},
+    {"id": "Stairs_F1", "x": 15, "y": 15, "floor": 1},
+    {"id": "Stairs_F2", "x": 15, "y": 15, "floor": 2},
+    {"id": "Room_201", "x": 5, "y": 15, "floor": 2}
+  ],
+  "edges": [
+    {"from": "Room_1", "to": "Hallway"},
+    {"from": "Room_2", "to": "Hallway"},
+    {"from": "Hallway", "to": "Stairs_F1"},
+    {"from": "Stairs_F1", "to": "Stairs_F2"},
+    {"from": "Stairs_F2", "to": "Room_201"}
+  ],
+  "walls": [
+    {"p1": [4, 1], "p2": [6, 1]}
+  ]
+}
