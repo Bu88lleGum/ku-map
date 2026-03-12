@@ -1,6 +1,16 @@
 # 🗺️ KuMap: Система навигации внутри зданий
 Проект по созданию интерактивных карт и поиску кратчайших путей внутри помещений (учебных корпусов) с учетом этажности и препятствий.
 
+## 🚀 KuMap Update:
+
+- Закинул рабочую логику навигации в backend/app/services/pathfinder.py.
+
+- Теперь можно тестить маршруты в Swagger: POST /calculate-path.
+
+- Пока работаем на JSON (пример данных в tests/map_data.json), параллельно готовлю переезд на PostGIS (модели уже в models/).
+
+- Для запуска: uvicorn app.main:app --reload из папки backend.
+
 ## 🛠 Стек технологий
 - **Backend:** FastAPI, SQLModel (ORM), PostGIS (Гео-БД), NetworkX (Алгоритмы графов).
 
