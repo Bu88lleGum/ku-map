@@ -49,6 +49,11 @@ cd frontend
 npm install
 npm run dev
 ```
+5. Запуск бэка 
+```bash
+cd backend
+uvicorn app.main:app --reload
+```
 
 #### 2. How to Modify the Database
 If you add a new field or a new table in models.py:

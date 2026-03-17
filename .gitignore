@@ -17,3 +17,8 @@ build/
 # OS
 .DS_Store
 Thumbs.db
+# Logs and reports
+*.log
+.pytest_cache/
+.coverage
+htmlcov/

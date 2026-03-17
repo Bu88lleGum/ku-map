@@ -1,62 +1,65 @@
 import networkx as nx
-import math
+from sqlmodel import Session, select
+from app.models.node import Node
+from app.models.edge import Edge
+from app.models.wall import Wall
+from geoalchemy2.shape import to_shape # Поможет превратить геометрию в объект Python
 
 class PathfinderService:
-    def __init__(self):
+    def __init__(self, session: Session):
+        self.session = session
         self.G = nx.Graph()
-        self.walls = []
 
-    def _intersect(self, a, b, c, d):
-        def ccw(A, B, C):
-            return (C[1]-A[1]) * (B[0]-A[0]) > (B[1]-A[1]) * (C[0]-A[0])
-        return ccw(a,c,d) != ccw(b,c,d) and ccw(a,b,c) != ccw(a,b,d)
-
-    def build_graph(self, data):
+    def load_graph_from_db(self):
+        """Загружает все данные из БД и строит граф NetworkX"""
         self.G.clear()
-        # Загружаем узлы
-        for node in data["nodes"]:
-            self.G.add_node(node["id"], pos=(node["x"], node["y"]), floor=node["floor"])
-        
-        self.walls = [(w["p1"], w["p2"]) for w in data.get("walls", [])]
 
-        # Строим ребра
-        for edge in data["edges"]:
-            u, v = edge["from"], edge["to"]
-            node_u, node_v = self.G.nodes[u], self.G.nodes[v]
-            
-            blocked = False
-            if node_u['floor'] == node_v['floor']:
-                for wall in self.walls:
-                    if self._intersect(node_u['pos'], node_v['pos'], wall[0], wall[1]):
-                        blocked = True
-                        break
-            
-            if not blocked:
-                weight = 15.0 if node_u['floor'] != node_v['floor'] else \
-                         math.dist(node_u['pos'], node_v['pos'])
-                self.G.add_edge(u, v, weight=weight)
+        # 1. Загружаем все узлы
+        nodes = self.session.exec(select(Node)).all()
+        for node in nodes:
+            # to_shape(node.geom) превращает Point в объект с .x и .y
+            point = to_shape(node.geom)
+            self.G.add_node(
+                node.id, 
+                pos=(point.x, point.y), 
+                floor=node.floor,
+                name=node.name
+            )
 
-    def find_path(self, start_id, end_id):
+        # 2. Загружаем все ребра
+        edges = self.session.exec(select(Edge)).all()
+        for edge in edges:
+            self.G.add_edge(
+                edge.source_node_id, 
+                edge.target_node_id, 
+                weight=edge.weight,
+                type=edge.type
+            )
+
+    def find_path(self, start_id: int, end_id: int):
+        # Если граф пуст (например, первый запуск), загружаем его
+        if not self.G.nodes:
+            self.load_graph_from_db()
+
         try:
-            # 1. Находим кратчайший путь (список ID)
             path_ids = nx.shortest_path(self.G, source=start_id, target=end_id, weight="weight")
             length = nx.shortest_path_length(self.G, source=start_id, target=end_id, weight="weight")
             
-            # 2. Собираем подробные данные о каждой точке пути для фронтенда
             detailed_path = []
             for node_id in path_ids:
                 node_data = self.G.nodes[node_id]
                 detailed_path.append({
                     "id": node_id,
+                    "name": node_data.get("name"),
                     "x": node_data["pos"][0],
                     "y": node_data["pos"][1],
                     "floor": node_data["floor"]
                 })
 
             return {
-                "path_nodes": detailed_path, # Теперь тут полные данные
+                "path_nodes": detailed_path,
                 "length": round(length, 2),
-                "time": round(length / 1.2, 1)
+                "time_seconds": round(length / 1.2, 1) # Примерная скорость 1.2 м/с
             }
         except nx.NetworkXNoPath:
             return None
