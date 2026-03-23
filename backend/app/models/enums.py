@@ -11,3 +11,4 @@ class NodeType(str, Enum):
     STAIRS = "stairs"
     HALLWAY = "hallway"
     INFO_TERMINAL = "info terminal"
+    ELEVATOR = "elevator"

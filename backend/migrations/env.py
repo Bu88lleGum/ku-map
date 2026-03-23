@@ -3,6 +3,7 @@ from os.path import abspath, dirname
 from logging.config import fileConfig
 from sqlalchemy import engine_from_config, pool
 from alembic import context
+import alembic_postgresql_enum
 
 # Добавляем путь к приложению
 sys.path.insert(0, dirname(dirname(abspath(__file__))))
@@ -24,6 +25,8 @@ def include_object(object, name, type_, reflected, compare_to):
     # Игнорируем авто-индексы геометрии (PostGIS создаст их сам)
     IGNORE_INDEXES = ["idx_node_geom", "idx_wall_geom"]
 
+    if type_ == "type":
+        return True
     if type_ == "table":
         return name in MY_PROJECT_TABLES
     if type_ == "index":
