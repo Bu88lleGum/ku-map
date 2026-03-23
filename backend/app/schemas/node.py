@@ -5,10 +5,11 @@ class NodeBase(BaseModel):
     name: str
     floor: int
     type: NodeType
-
-class NodeCreate(NodeBase):
     x: float
     y: float
+
+class NodeCreate(NodeBase):
+    pass
 
 class NodeRead(NodeBase):
     id: int

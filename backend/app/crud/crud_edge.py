@@ -36,3 +36,8 @@ def create_edge(session: Session, edge_in: EdgeCreate) -> Edge:
 
 def get_edges(session: Session):
     return session.exec(select(Edge)).all()
+
+def get_edges_by_floor(session: Session, floor_id: int) -> list[Edge]:
+    # Выбираем только те ребра, которые принадлежат указанному этажу
+    statement = select(Edge).where(Edge.floor == floor_id)
+    return session.exec(statement).all()

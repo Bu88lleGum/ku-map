@@ -1,6 +1,7 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from app.api.endpoints import nav_router, nodes_router, edges_router
+
 app = FastAPI(title="KuMap API")
 
 # Настройка CORS для фронтенда (Next.js обычно на 3000 порту)

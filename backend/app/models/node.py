@@ -13,7 +13,7 @@ class Node(SQLModel, table=True):
     type: NodeType = Field(default=NodeType.ROOM)
 
     # POINT(x y)
-    geom: str = Field(sa_column=Column(Geometry("POINT")))
+    geom: str = Field(sa_column=Column(Geometry("POINT", srid=3857)))
 
 
     outgoing_edges: List["Edge"] = Relationship(

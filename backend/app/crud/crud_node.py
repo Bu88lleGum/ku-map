@@ -46,3 +46,20 @@ def get_nodes(session: Session) -> list[dict]:
             results.append(node_data)
         
     return results
+
+def get_nodes_by_floor(session: Session, floor_id: int) -> list[dict]:
+    # Фильтруем по этажу
+    statement = select(Node).where(Node.floor == floor_id)
+    db_nodes = session.exec(statement).all()
+    
+    results = []
+    for node in db_nodes:
+        if node.geom:
+            point = to_shape(node.geom)
+            node_data = node.model_dump() 
+            # Добавляем координаты для фронтенда
+            node_data["x"] = point.x
+            node_data["y"] = point.y
+            results.append(node_data)
+        
+    return results
