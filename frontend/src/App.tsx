@@ -24,7 +24,7 @@ export default function App() {
     loadNodes().finally(() => setNodesLoading(false));
   }, [loadNodes]);
 
-  // Auto-switch to floor where path starts
+  // Автосмена этажа при загрузке нового маршрута
   useEffect(() => {
     if (pathResult && pathResult.path_nodes.length > 0) {
       setActiveFloor(pathResult.path_nodes[0].floor);
@@ -51,7 +51,7 @@ export default function App() {
     setEndId(null);
   }, [clearPath]);
 
-  // Keyboard shortcut: Enter to find path
+  // Shortcut для поиска по Enter
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key === 'Enter' && startId && endId && !loading) handleFind();
