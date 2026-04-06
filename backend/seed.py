@@ -6,10 +6,12 @@ from app.models.wall import Wall
 from app.core.database import DATABASE_URL
 from app.models.enums import NodeType, EdgeType
 from pathlib import Path
+from geoalchemy2.shape import to_shape
+from shapely.ops import nearest_points
 
 engine = create_engine(DATABASE_URL)
 SCRIPT_DIR = Path(__file__).resolve().parent
-BASE_DATA_PATH = SCRIPT_DIR / "data" / "processed"
+BASE_DATA_PATH = SCRIPT_DIR / "data" / "full"
 
 
 def get_node_type(t: str) -> NodeType:
@@ -28,6 +30,7 @@ def get_edge_type(t: str) -> EdgeType:
         "Corridor": EdgeType.CORRIDOR,
         "Stairs": EdgeType.STAIRS,
         "Elevator": EdgeType.ELEVATOR,
+        "Elevators": EdgeType.ELEVATOR,
         "Room": EdgeType.DOOR,
     }
     return mapping.get(t, EdgeType.CORRIDOR)
@@ -54,21 +57,90 @@ def find_node_id(coord, floor, coord_to_id, tolerance=0.2):
     return None
 
 def connect_stairs(session):
-    print("--- Связывание лестниц между этажами ---")
-    statement = select(Node).where(Node.type == NodeType.STAIRS)
-    stair_nodes = session.exec(statement).all()
+    print("--- Связывание лестниц (Поиск ближайшего соседа) ---")
+    # Получаем все лестницы, отсортированные по этажам
+    nodes = session.exec(select(Node).where(Node.type == NodeType.STAIRS)).all()
     
-    # Группируем лестницы по координатам, чтобы связывать пролеты одной лестницы
-    # (В вашем случае точка одна [51.31, 21.529], так что сработает корректно)
-    stair_nodes.sort(key=lambda x: x.floor)
+    # Группируем по этажам для удобства поиска
+    nodes_by_floor = {}
+    for n in nodes:
+        if n.floor not in nodes_by_floor:
+            nodes_by_floor[n.floor] = []
+        nodes_by_floor[n.floor].append(n)
 
-    for i in range(len(stair_nodes) - 1):
-        n1, n2 = stair_nodes[i], stair_nodes[i+1]
-        if n2.floor == n1.floor + 1:
-            # Создаем двустороннюю связь между этажами
-            session.add(Edge(source_node_id=n1.id, target_node_id=n2.id, floor=n1.floor, type=EdgeType.STAIRS, weight=15.0))
-            session.add(Edge(source_node_id=n2.id, target_node_id=n1.id, floor=n2.floor, type=EdgeType.STAIRS, weight=10.0))
+    floors = sorted(nodes_by_floor.keys())
+    connections_count = 0
 
+    for i in range(len(floors) - 1):
+        current_floor = floors[i]
+        next_floor = floors[i+1]
+        
+        for n1 in nodes_by_floor[current_floor]:
+            p1 = to_shape(n1.geom)
+            
+            # Ищем ближайшую лестницу на следующем этаже
+            best_match = None
+            min_dist = 15.0  # Максимальный радиус поиска - 15 метров
+            
+            for n2 in nodes_by_floor[next_floor]:
+                p2 = to_shape(n2.geom)
+                dist = p1.distance(p2)
+                
+                if dist < min_dist:
+                    min_dist = dist
+                    best_match = n2
+            
+            if best_match:
+                # Нашли пару! Связываем их.
+                session.add(Edge(source_node_id=n1.id, target_node_id=best_match.id, 
+                                 floor=n1.floor, type=EdgeType.STAIRS, weight=25.0))
+                session.add(Edge(source_node_id=best_match.id, target_node_id=n1.id, 
+                                 floor=best_match.floor, type=EdgeType.STAIRS, weight=15.0))
+                connections_count += 1
+
+    print(f"Создано лестничных пролетов: {connections_count}")
+
+def connect_elevators(session):
+    print("--- Связывание лифтов (Метод прямого поиска соседа снизу) ---")
+    # Группируем узлы по этажам
+    nodes_by_floor = {}
+    all_elevator_nodes = session.exec(select(Node).where(Node.type == NodeType.ELEVATOR)).all()
+    
+    for n in all_elevator_nodes:
+        if n.floor not in nodes_by_floor:
+            nodes_by_floor[n.floor] = []
+        nodes_by_floor[n.floor].append(n)
+        
+    floors = sorted(nodes_by_floor.keys())
+    
+    # Идем сверху вниз и для каждого лифта ищем ближайшего "брата" на этаж ниже
+    for i in range(len(floors) - 1, 0, -1):
+        curr_f = floors[i]
+        prev_f = floors[i-1]
+        
+        print(f"Связываем {curr_f} этаж с {prev_f}...")
+        
+        for n_upper in nodes_by_floor[curr_f]:
+            p_upper = to_shape(n_upper.geom)
+            
+            # Ищем самый близкий лифт на этаже ниже, игнорируя радиус
+            best_match = None
+            min_dist = float('inf')
+            
+            for n_lower in nodes_by_floor[prev_f]:
+                dist = p_upper.distance(to_shape(n_lower.geom))
+                if dist < min_dist:
+                    min_dist = dist
+                    best_match = n_lower
+            
+            if best_match:
+                # Связываем (напрямую, без штрафа за посадку, чтобы проверить связь)
+                w = 20.0
+                session.add(Edge(source_node_id=n_upper.id, target_node_id=best_match.id, floor=n_upper.floor, type=EdgeType.ELEVATOR, weight=w))
+                session.add(Edge(source_node_id=best_match.id, target_node_id=n_upper.id, floor=best_match.floor, type=EdgeType.ELEVATOR, weight=w))
+
+    session.commit()
+    print("Связи лифтов созданы принудительно.")
 # --- ОСНОВНАЯ ФУНКЦИЯ ---
 
 def seed_from_geojson():
@@ -80,7 +152,7 @@ def seed_from_geojson():
 
     nodes_path = BASE_DATA_PATH / "nodes.geojson"
     edges_path = BASE_DATA_PATH / "edges.geojson"
-    walls_path = BASE_DATA_PATH / "walls.geojson"
+    # walls_path = BASE_DATA_PATH / "walls.geojson"
 
     with Session(engine) as session:
         print("Очистка таблиц...")
@@ -153,11 +225,14 @@ def seed_from_geojson():
         # 3. Вертикальное связывание (лестницы)
         connect_stairs(session)
 
-        # 4. Стены
-        if walls_path.exists():
-            gdf_walls = gpd.read_file(walls_path)
-            for _, row in gdf_walls.iterrows():
-                session.add(Wall(floor=int(row['floor']), geom=f"SRID=3857;{row.geometry.wkt}"))
+        # 4. Вертикальное связывание (лифты)
+        connect_elevators(session)
+
+        # 5. Стены
+        # if walls_path.exists():
+        #     gdf_walls = gpd.read_file(walls_path)
+        #     for _, row in gdf_walls.iterrows():
+        #         session.add(Wall(floor=int(row['floor']), geom=f"SRID=3857;{row.geometry.wkt}"))
         
         session.commit()
         print("Импорт завершен!")
