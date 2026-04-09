@@ -26,12 +26,13 @@ function getBounds(nodes: Node[]) {
   };
 }
 
-function toSvg(x: number, y: number, b: ReturnType<typeof getBounds>, vw: number, vh: number) {
+function toSvg(x: number, y: number, vw: number, vh: number) {
   return {
-    cx: ((x - b.minX) / (b.maxX - b.minX)) * vw,
-    cy: ((y - b.minY) / (b.maxY - b.minY)) * vh,
+    cx: (x / 500) * vw,
+    cy: (Math.abs(y) / 500) * vh,
   };
 }
+
 
 interface Transform { x: number; y: number; scale: number }
 
@@ -59,14 +60,14 @@ export const FloorMap: React.FC<FloorMapProps> = ({ floor, pathNodes, allNodes }
     setImgLoaded(false);
   }, [floor, pathNodes.length]);
 
-  const VW = 1000;
-  const VH = 620;
-  const bounds = getBounds(allNodes);
+  const VW = 500;
+  const VH = 500;
+  // const bounds = getBounds(allNodes);
 
   const floorPath = pathNodes.filter((n) => n.floor === floor);
   const floorAll  = allNodes.filter((n) => n.floor === floor);
 
-  const pts = floorPath.map((n) => toSvg(n.x, n.y, bounds, VW, VH));
+  const pts = floorPath.map((n) => toSvg(n.x, n.y, VW, VH));
   const poly = pts.map((p) => `${p.cx},${p.cy}`).join(' ');
   const totalLen = pts.reduce((acc, p, i) => {
     if (i === 0) return 0;
@@ -165,7 +166,7 @@ export const FloorMap: React.FC<FloorMapProps> = ({ floor, pathNodes, allNodes }
           {/* Background nodes */}
           {floorAll.map((node) => {
             if (floorPath.some((p) => p.id === node.id)) return null;
-            const { cx, cy } = toSvg(node.x, node.y, bounds, VW, VH);
+            const { cx, cy } = toSvg(node.x, node.y, VW, VH);
             const stairs = node.type === 'stairs';
             return (
               <g key={`bg-${node.id}`}>
@@ -214,7 +215,7 @@ export const FloorMap: React.FC<FloorMapProps> = ({ floor, pathNodes, allNodes }
 
           {/* Path nodes */}
           {floorPath.map((node, i) => {
-            const { cx, cy } = toSvg(node.x, node.y, bounds, VW, VH);
+            const { cx, cy } = toSvg(node.x, node.y, VW, VH);
             const isStart = i === 0 && pathNodes[0]?.id === node.id;
             const isEnd   = i === floorPath.length - 1 && pathNodes[pathNodes.length - 1]?.id === node.id;
             const color   = isStart ? '#22c55e' : isEnd ? '#ef4444' : '#3b82f6';
