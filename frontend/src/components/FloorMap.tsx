@@ -7,32 +7,34 @@ interface FloorMapProps {
   allNodes: Node[];
 }
 
-const FLOOR_IMAGES: Record<number, string> = {
-  1: '/images/floor1.png',
-  2: '/images/floor2.png',
-  3: '/images/floor3.png',
+// ── Coordinate mapping ──────────────────────────────────────────────────────
+// Backend coords are in raw pixel-like units (~5000–35000 range).
+// We normalise them to the SVG viewBox [0, VW] × [0, VH].
+// Y-axis in backend: larger Y = further DOWN on the map image
+// (standard screen coordinate convention, so NO y-flip needed).
+
+const COORD_BOUNDS = {
+  minX: 4000,
+  maxX: 35500,
+  minY: 3000,
+  maxY: 32000,
 };
 
-function getBounds(nodes: Node[]) {
-  if (nodes.length === 0) return { minX: -5, maxX: 70, minY: 5, maxY: 50 };
-  const xs = nodes.map((n) => n.x);
-  const ys = nodes.map((n) => n.y);
-  const pad = 6;
+const VW = 1000;
+const VH = 1000;
+
+function toSvg(x: number, y: number) {
+  const { minX, maxX, minY, maxY } = COORD_BOUNDS;
   return {
-    minX: Math.min(...xs) - pad,
-    maxX: Math.max(...xs) + pad,
-    minY: Math.min(...ys) - pad,
-    maxY: Math.max(...ys) + pad,
+    cx: ((x - minX) / (maxX - minX)) * VW,
+    cy: ((y - minY) / (maxY - minY)) * VH,
   };
 }
 
-function toSvg(x: number, y: number, vw: number, vh: number) {
-  return {
-    cx: (x / 500) * vw,
-    cy: (Math.abs(y) / 500) * vh,
-  };
+// Floor images – 0 through 10
+function floorImage(floor: number): string {
+  return `/usedImages/floor${floor}.png`;
 }
-
 
 interface Transform { x: number; y: number; scale: number }
 
@@ -60,14 +62,10 @@ export const FloorMap: React.FC<FloorMapProps> = ({ floor, pathNodes, allNodes }
     setImgLoaded(false);
   }, [floor, pathNodes.length]);
 
-  const VW = 500;
-  const VH = 500;
-  // const bounds = getBounds(allNodes);
-
   const floorPath = pathNodes.filter((n) => n.floor === floor);
   const floorAll  = allNodes.filter((n) => n.floor === floor);
 
-  const pts = floorPath.map((n) => toSvg(n.x, n.y, VW, VH));
+  const pts  = floorPath.map((n) => toSvg(n.x, n.y));
   const poly = pts.map((p) => `${p.cx},${p.cy}`).join(' ');
   const totalLen = pts.reduce((acc, p, i) => {
     if (i === 0) return 0;
@@ -80,7 +78,7 @@ export const FloorMap: React.FC<FloorMapProps> = ({ floor, pathNodes, allNodes }
     e.preventDefault();
     const delta = e.deltaY > 0 ? 0.85 : 1.18;
     setTf((t) => {
-      const s = Math.max(0.5, Math.min(6, t.scale * delta));
+      const s = Math.max(0.4, Math.min(8, t.scale * delta));
       const rect = containerRef.current?.getBoundingClientRect();
       if (!rect) return t;
       const mx = e.clientX - rect.left;
@@ -104,8 +102,10 @@ export const FloorMap: React.FC<FloorMapProps> = ({ floor, pathNodes, allNodes }
   }, []);
 
   const onUp = useCallback(() => { dragging.current = false; }, []);
-
   const resetView = () => setTf({ x: 0, y: 0, scale: 1 });
+
+  const filterId = `glow-${floor}`;
+  const softId   = `sg-${floor}`;
 
   return (
     <div
@@ -118,7 +118,7 @@ export const FloorMap: React.FC<FloorMapProps> = ({ floor, pathNodes, allNodes }
       onMouseUp={onUp}
       onMouseLeave={onUp}
     >
-      {/* Transform layer */}
+      {/* ── Transform layer ── */}
       <div
         style={{
           transform: `translate(${tf.x}px,${tf.y}px) scale(${tf.scale})`,
@@ -138,43 +138,44 @@ export const FloorMap: React.FC<FloorMapProps> = ({ floor, pathNodes, allNodes }
         {/* Floor image */}
         <img
           key={`img-${floor}`}
-          src={FLOOR_IMAGES[floor]}
+          src={floorImage(floor)}
           alt={`Этаж ${floor}`}
           onLoad={() => setImgLoaded(true)}
+          onError={() => setImgLoaded(true)}   // show SVG even if no image
           className="absolute inset-0 w-full h-full object-contain pointer-events-none"
           style={{ opacity: imgLoaded ? 1 : 0, transition: 'opacity 0.25s' }}
           draggable={false}
         />
 
-        {/* SVG overlay */}
+        {/* ── SVG overlay ── */}
         <svg
           className="absolute inset-0 w-full h-full pointer-events-none"
           viewBox={`0 0 ${VW} ${VH}`}
           preserveAspectRatio="xMidYMid meet"
         >
           <defs>
-            <filter id={`glow-${floor}`}>
+            <filter id={filterId}>
               <feGaussianBlur stdDeviation="5" result="b" />
               <feMerge><feMergeNode in="b" /><feMergeNode in="SourceGraphic" /></feMerge>
             </filter>
-            <filter id={`sg-${floor}`}>
+            <filter id={softId}>
               <feGaussianBlur stdDeviation="2.5" result="b" />
               <feMerge><feMergeNode in="b" /><feMergeNode in="SourceGraphic" /></feMerge>
             </filter>
           </defs>
 
-          {/* Background nodes */}
+          {/* Background (non-path) nodes */}
           {floorAll.map((node) => {
             if (floorPath.some((p) => p.id === node.id)) return null;
-            const { cx, cy } = toSvg(node.x, node.y, VW, VH);
+            const { cx, cy } = toSvg(node.x, node.y);
             const stairs = node.type === 'stairs';
             return (
               <g key={`bg-${node.id}`}>
-                <circle cx={cx} cy={cy} r={stairs ? 5 : 3.5}
-                  fill={stairs ? '#f59e0b' : '#334155'} opacity={stairs ? 0.55 : 0.4} />
+                <circle cx={cx} cy={cy} r={stairs ? 6 : 4}
+                  fill={stairs ? '#f59e0b' : '#334155'} opacity={stairs ? 0.65 : 0.45} />
                 {stairs && (
-                  <text x={cx} y={cy - 9} textAnchor="middle" fontSize={9}
-                    fill="#f59e0b" opacity={0.5} fontFamily="monospace">↕</text>
+                  <text x={cx} y={cy - 10} textAnchor="middle" fontSize={10}
+                    fill="#f59e0b" opacity={0.55} fontFamily="monospace">↕</text>
                 )}
               </g>
             );
@@ -183,15 +184,15 @@ export const FloorMap: React.FC<FloorMapProps> = ({ floor, pathNodes, allNodes }
           {/* Path: outer glow */}
           {pts.length > 1 && (
             <polyline key={`glow-${animKey}`} points={poly}
-              fill="none" stroke="#3b82f6" strokeWidth={16}
+              fill="none" stroke="#3b82f6" strokeWidth={18}
               strokeOpacity={0.1} strokeLinecap="round" strokeLinejoin="round"
-              filter={`url(#glow-${floor})`} />
+              filter={`url(#${filterId})`} />
           )}
 
-          {/* Path: animated line */}
+          {/* Path: animated draw line */}
           {pts.length > 1 && (
             <polyline key={`line-${animKey}`} points={poly}
-              fill="none" stroke="#60a5fa" strokeWidth={3.5}
+              fill="none" stroke="#60a5fa" strokeWidth={4}
               strokeLinecap="round" strokeLinejoin="round"
               strokeDasharray={`${totalLen} ${totalLen}`}
               strokeDashoffset={totalLen}
@@ -208,37 +209,35 @@ export const FloorMap: React.FC<FloorMapProps> = ({ floor, pathNodes, allNodes }
               <g key={`arr-${i}`}
                 transform={`translate(${mx},${my}) rotate(${ang})`}
                 style={{ animation: `kumap-fade 0.3s ease ${1.3 + i * 0.06}s both`, opacity: 0 }}>
-                <polygon points="-6,-3.5 6,0 -6,3.5" fill="#93c5fd" opacity={0.75} />
+                <polygon points="-7,-4 7,0 -7,4" fill="#93c5fd" opacity={0.75} />
               </g>
             );
           })}
 
           {/* Path nodes */}
           {floorPath.map((node, i) => {
-            const { cx, cy } = toSvg(node.x, node.y, VW, VH);
+            const { cx, cy } = toSvg(node.x, node.y);
             const isStart = i === 0 && pathNodes[0]?.id === node.id;
             const isEnd   = i === floorPath.length - 1 && pathNodes[pathNodes.length - 1]?.id === node.id;
             const color   = isStart ? '#22c55e' : isEnd ? '#ef4444' : '#3b82f6';
-            const r       = isStart || isEnd ? 9 : 5;
+            const r       = isStart || isEnd ? 10 : 6;
             const delay   = 1.0 + i * 0.09;
 
             return (
               <g key={`pn-${node.id}`}
                 style={{ animation: `kumap-pop 0.35s cubic-bezier(.34,1.56,.64,1) ${delay}s both`, opacity: 0 }}>
-                {/* Pulse ring for start/end */}
                 {(isStart || isEnd) && (
-                  <circle cx={cx} cy={cy} r={r + 7} fill={color} opacity={0.12} />
+                  <circle cx={cx} cy={cy} r={r + 8} fill={color} opacity={0.12} />
                 )}
                 <circle cx={cx} cy={cy} r={r + 4} fill={color} opacity={0.15} />
-                <circle cx={cx} cy={cy} r={r} fill={color} filter={`url(#sg-${floor})`} />
-                <circle cx={cx} cy={cy} r={r * 0.45} fill="white" opacity={0.6} />
+                <circle cx={cx} cy={cy} r={r} fill={color} filter={`url(#${softId})`} />
+                <circle cx={cx} cy={cy} r={r * 0.42} fill="white" opacity={0.65} />
 
-                {/* Label chip */}
                 {(isStart || isEnd) && (
                   <g>
-                    <rect x={cx - 20} y={cy - 26} width={40} height={15} rx={4}
+                    <rect x={cx - 22} y={cy - 28} width={44} height={16} rx={4}
                       fill="#0b1018" opacity={0.9} />
-                    <rect x={cx - 20} y={cy - 26} width={40} height={15} rx={4}
+                    <rect x={cx - 22} y={cy - 28} width={44} height={16} rx={4}
                       fill="none" stroke={color} strokeWidth={0.8} opacity={0.6} />
                     <text x={cx} y={cy - 15} textAnchor="middle"
                       fontSize={10} fontWeight="700"
@@ -253,7 +252,7 @@ export const FloorMap: React.FC<FloorMapProps> = ({ floor, pathNodes, allNodes }
         </svg>
       </div>
 
-      {/* Floor badge */}
+      {/* ── Floor badge ── */}
       <div className="absolute top-3 left-3 flex items-center gap-2 px-3 py-1.5 rounded-lg bg-black/75 border border-white/10 backdrop-blur-sm pointer-events-none">
         <span className="text-xs font-semibold tracking-[0.15em] text-slate-300 uppercase font-mono">
           Этаж {floor}
@@ -263,11 +262,11 @@ export const FloorMap: React.FC<FloorMapProps> = ({ floor, pathNodes, allNodes }
         )}
       </div>
 
-      {/* Zoom controls */}
+      {/* ── Zoom controls ── */}
       <div className="absolute bottom-4 right-4 flex flex-col gap-1.5">
         {([
-          { label: '+', fn: () => setTf((t) => ({ ...t, scale: Math.min(6, t.scale * 1.3) })) },
-          { label: '−', fn: () => setTf((t) => ({ ...t, scale: Math.max(0.5, t.scale / 1.3) })) },
+          { label: '+', fn: () => setTf((t) => ({ ...t, scale: Math.min(8, t.scale * 1.3) })) },
+          { label: '−', fn: () => setTf((t) => ({ ...t, scale: Math.max(0.4, t.scale / 1.3) })) },
           { label: '⊙', fn: resetView },
         ] as const).map(({ label, fn }) => (
           <button key={label} onClick={fn}
@@ -277,7 +276,6 @@ export const FloorMap: React.FC<FloorMapProps> = ({ floor, pathNodes, allNodes }
         ))}
       </div>
 
-      {/* Zoom level */}
       {tf.scale !== 1 && (
         <div className="absolute bottom-4 left-3 text-[10px] text-slate-600 font-mono pointer-events-none">
           {Math.round(tf.scale * 100)}%
