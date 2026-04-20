@@ -1,36 +1,226 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# KuMap frontend
 
-## Getting Started
+react + vite + tailwind. бэк на питоне, соединение чекрез REST.
 
-First, run the development server:
+---
+
+## чтобы запустить
 
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+откроется на localhost:3000. бэкенд должен быть на 127.0.0.1:8000
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+для сборки:
+```bash
+npm run build
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+---
 
-## Learn More
+## что где лежит
 
-To learn more about Next.js, take a look at the following resources:
+src/App.tsx — главный файл, тут табы этажей и общее состояние
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+src/api/index.ts — все запросы к бэку
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+src/components/FloorMap.tsx — сама карта, картинка + SVG поверх с нодами
 
-## Deploy on Vercel
+src/components/NodeSelector.tsx — дропдаун выбора точки откуда/куда
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+src/components/PathInfo.tsx — блок с результатом, шаги маршрута и статистика
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+src/hooks/useNavigation.ts — хук который хранит состояние нод и маршрута
+
+src/types/index.ts — все typescript типы
+
+public/usedImages/ — здесь картинки этажей, floor0.png до floor10.png
+
+---
+
+## этажи
+
+в App.tsx в самом начале есть:
+
+```ts
+const FLOORS = Array.from({ length: 11 }, (_, i) => i)
+```
+
+это создаёт массив [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]. если надо убрать нулевой этаж — нужно менять на length: 10 . если добавить 11й этаж — length: 12.
+
+вкладка нулевого этажа подписана "Цоколь", остальные "Этаж 1", "Этаж 2" и т.д. это тоже в App.tsx:
+
+```tsx
+{floor === 0 ? 'Цоколь' : `Этаж ${floor}`}
+```
+
+---
+
+## картинки этажей
+
+в FloorMap.tsx есть функция:
+
+```ts
+function floorImage(floor: number): string {
+  return `/usedImages/floor${floor}.png`
+}
+```
+
+файлы должны называться floor0.png, floor1.png, ..., floor10.png и лежать в папке public/usedImages/. если переименуешь папку или файлы — меняй именно эту функцию.
+
+если картинка не загрузилась — приложение не сломается, ноды всё равно покажет.
+
+на данный момент дизайн фона сайта сделан темным, и названия этажей темные. Нужно согласовать
+дизайн и менять либо названия на фотках либо делать UI светлее
+
+---
+
+## ноды на карте
+
+бэк отдаёт координаты нод в больших числах, что-то вроде 5000-35000. чтобы они правильно легли на картинку, в FloorMap.tsx есть константа:
+
+```ts
+const COORD_BOUNDS = {
+  minX: 4000,
+  maxX: 35500,
+  minY: 3000,
+  maxY: 32000,
+}
+```
+
+это диапазон координат нод. SVG у нас 1000x1000, и мы просто пропорционально растягиваем ноды в этот квадрат.
+
+### если ноды лежат криво
+
+ноды съехали вправо — уменьши minX
+
+ноды съехали влево — увеличь minX
+
+ноды съехали вниз — уменьши minY
+
+ноды съехали вверх — увеличь minY
+
+ноды все сжались в середину по горизонтали — диапазон maxX - minX слишком большой, сужай его
+
+ноды отражены зеркально по вертикали (верх и низ поменяны) — в функции toSvg поменяй строку с cy:
+
+```ts
+// было
+cy: ((y - minY) / (maxY - minY)) * VH,
+
+// стало
+cy: (1 - (y - minY) / (maxY - minY)) * VH,
+```
+
+### как подобрать правильные bounds (это для типа на фронте (меня ))
+
+открой json с нодами, найди ноды одного этажа, посмотри минимальный и максимальный x и y. возьми эти числа с запасом примерно по 500 и подставь в COORD_BOUNDS. запас нужен чтобы крайние ноды не упирались в край картинки.
+
+---
+
+## апи и бэкенд
+
+все запросы в src/api/index.ts. базовый url:
+
+```ts
+const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://127.0.0.1:8000/api/v1'
+```
+
+чтобы поменять адрес бэка не трогая код — создай файл .env.local в корне проекта:
+
+```
+VITE_API_BASE_URL=https://домен.бэка/api/v1
+```
+
+какие эндпоинты используются:
+
+GET /nodes/ — все ноды всех этажей, грузится один раз при старте
+
+GET /nodes/floor/N — ноды конкретного этажа (пока не используется в UI но функция есть)
+
+GET /edges/floor/N — рёбра графа (тоже есть в апи но в UI не нужны напрямую)
+
+GET /navigation/calculate-path?start_id=X&end_id=Y — маршрут между двумя нодами
+
+в dev режиме запросы идут через прокси в vite.config.ts, поэтому CORS не мешает. в продакшне прокси нет, надо либо настроить CORS на бэке, либо ставить nginx.
+
+---
+
+## типы данных
+
+в src/types/index.ts. коротко:
+
+Node — нода на карте. поля: id, name (номер аудитории), x, y, floor, type (room / hallway / stairs)
+
+PathNode — нода в маршруте. то же самое но без поля type
+
+PathResult — результат поиска пути. внутри: path_nodes (массив PathNode по порядку), length_meters, time_seconds, instructions (массив строк с шагами)
+
+Edge — ребро графа. from_node_id, to_node_id, floor
+
+---
+
+## как работает карта внутри
+
+FloorMap.tsx принимает три пропса: floor (какой этаж показываем), pathNodes (ноды маршрута от бэка), allNodes (все ноды для фоновых точек).
+
+картинка и SVG лежат поверх друг друга через absolute inset-0. у картинки object-contain, у SVG preserveAspectRatio="xMidYMid meet" — они масштабируются одинаково, поэтому ноды совпадают с картинкой при любом размере окна.
+
+зум и перетаскивание работают через transform: translate() scale() на обёртке. колёсиком — зум к курсору, мышью — перетаскивание. кнопки + - и сброс в правом нижнем углу.
+
+анимации прописаны как css-кейфреймы прямо в компоненте в теге style в конце.
+
+---
+
+## NodeSelector
+
+дропдаун с поиском. ищет по имени ноды и по номеру этажа. показывает не больше 50 результатов — это чтобы не тормозило при 700+ нодах. если надо больше можно поменять .slice(0, 50) в компоненте.
+
+сортировка: сначала идут комнаты (type === room), потом остальное. внутри групп сортировка по имени с учётом цифр, то есть 9 идёт перед 10.
+
+---
+
+## PathInfo
+
+блок результата в сайдбаре. показывает расстояние, время, номера этажей маршрута и список шагов.
+
+иконки в шагах: зелёный треугольник — старт, красный кружок — конец, стрелка вверх — переход между этажами. переход между этажами определяется по тексту инструкции — если в строке есть слово "этаж" или "Под". если бэк изменит формат инструкций — можно исправить это условие в PathInfo.tsx:
+
+```ts
+const isStairs = step.includes('этаж') || step.includes('Под')
+```
+
+---
+
+## цвета и стили
+
+весь UI на tailwind-классах прямо в JSX. глобальных переменных нет.
+
+фон приложения — #080c14 в App.tsx на корневом диве
+
+фон карты — #0b1018 во FloorMap.tsx
+
+цвета нод в FloorMap.tsx:
+```ts
+const color = isStart ? '#22c55e' : isEnd ? '#ef4444' : '#3b82f6'
+// зелёный старт, красный конец, синий промежуточные
+```
+
+цвет линии маршрута там же: stroke="#60a5fa" основная линия, stroke="#3b82f6" свечение вокруг
+
+шрифт IBM Plex Mono, подключён инлайн стилем на корневом элементе в App.tsx. если нет интернета и шрифт не загрузится — упадёт на monospace, некритично.
+
+над стилем не парился, клод большую часть написал, в свободное время переписываю UI покрасивее
+но пока не особо на этом зацикливаюсь
+
+---
+
+## Проблемы с которыми я сталлкивался
+
+ноды все в одном углу — COORD_BOUNDS не совпадает с реальными данными. смотри реальный диапазон через вкладку Network в devtools.
+
+картинки не грузятся — проверь что файлы называются floor0.png, floor1.png и т.д. и лежат в public/usedImages/. регистр важен.
+
+бэк не отвечает — проверь что он запущен, и что адрес в VITE_API_BASE_URL или в дефолтном значении правильный.
