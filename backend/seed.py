@@ -12,7 +12,7 @@ from shapely.ops import nearest_points
 engine = create_engine(DATABASE_URL)
 SCRIPT_DIR = Path(__file__).resolve().parent
 # BASE_DATA_PATH = SCRIPT_DIR / "data" / "full"
-BASE_DATA_PATH = SCRIPT_DIR / "data" / "processed"
+BASE_DATA_PATH = SCRIPT_DIR / "data" / "campus"
 
 
 def get_node_type(t: str) -> NodeType:
